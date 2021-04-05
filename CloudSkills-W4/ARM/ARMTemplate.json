@@ -1,0 +1,181 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "adminpassword": {
+            "type": "string",
+            "metadata": {
+                "description": "Admin password"
+            }
+        }
+    },
+    "functions": [],
+    "variables": {},
+    "resources": [
+        {
+            "name": "[toLower('csmadelstorage')]",
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2019-06-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "csmadel Storage Account"
+            },
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "kind": "Storage"
+        },
+        {
+            "name": "csmadel-PublicIP",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2019-11-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "PublicIPAddress"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[toLower('csmadel')]"
+                }
+            }
+        },
+        {
+            "name": "csmadel-nsg",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2018-08-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "nsgRule1",
+                        "properties": {
+                            "description": "description",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "csmadel-VirtualNetwork",
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2019-11-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', 'csmadel-nsg')]"
+            ],
+            "tags": {
+                "displayName": "csmadel-VirtualNetwork"
+            },
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "10.0.0.0/16"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "csmadel-VirtualNetwork-Subnet",
+                        "properties": {
+                            "addressPrefix": "10.0.0.0/24",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'csmadel-nsg')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "csmadel-NetworkInterface",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2019-11-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', 'csmadel-PublicIP')]",
+                "[resourceId('Microsoft.Network/virtualNetworks', 'csmadel-VirtualNetwork')]"
+            ],
+            "tags": {
+                "displayName": "csmadel-NetworkInterface"
+            },
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipConfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'csmadel-PublicIP')]"
+                            },
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'csmadel-VirtualNetwork', 'csmadel-VirtualNetwork-Subnet')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "csmadel",
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2019-07-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', 'csmadel-NetworkInterface')]"
+            ],
+            "tags": {
+                "displayName": "csmadel"
+            },
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_A2_v2"
+                },
+                "osProfile": {
+                    "computerName": "csmadel",
+                    "adminUsername": "adminUsername",
+                    "adminPassword": "[parameters('adminpassword')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "UbuntuServer",
+                        "sku": "16.04-LTS",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "name": "csmadel-OSDisk",
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', 'csmadel-NetworkInterface')]"
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {
+                    "bootDiagnostics": {
+                        "enabled": true,
+                        "storageUri": "[reference(resourceId('Microsoft.Storage/storageAccounts/', toLower('csmadelstorage'))).primaryEndpoints.blob]"
+                    }
+                }
+            }
+        }
+    ],
+    "outputs": {
+        "publicIP": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses','csmadel-PublicIP')).dnsSettings.fqdn]"
+        }
+    }
+}

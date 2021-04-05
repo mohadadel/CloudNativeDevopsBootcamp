@@ -1,0 +1,39 @@
+package test
+//go get -t -v
+import (
+	"fmt"
+	"testing"
+	"time"
+
+	http_helper "github.com/gruntwork-io/terratest/modules/http-helper"
+	"github.com/gruntwork-io/terratest/modules/terraform"
+)
+
+func TestTerraformWebserverExample(t *testing.T) {
+
+	// The vlues to pass into the terraform ClI
+	terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
+
+		//The path to wher the example Terraform code  is located
+		TerraformDir: "../examples/webserver",
+
+		// Variables to pass the Terraform code using -var options
+		Vars: map[string]interface{}{
+			"region":     "us-east-2",
+			"servername": "testwebserver",
+		},
+	})
+
+	// Run a Terraform init and apply with the Terraform options
+	terraform.InitAndApply(t, terraformOptions)
+
+	// Run a Terraform Destroy at the end of the test
+	defer terraform.Destroy(t, terraformOptions)
+
+	publicIp := terraform.Output(t, terraformOptions, "public_ip")
+
+	url := fmt.Sprintf("http://%s:8080", publicIp)
+
+	http_helper.HttpGetWithRetry(t, url, nil, 200, "I made a Terraform module", 30, 5*time.Second)
+
+}
